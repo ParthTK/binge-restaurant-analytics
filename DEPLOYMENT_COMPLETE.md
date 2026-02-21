@@ -4,7 +4,7 @@
 
 ### Database
 - ✅ `dashboard_users` table created in BigQuery (`foodwars_ops` dataset)
-- ✅ Admin user added: **parthtkale@gmail.com** (Parth Kale)
+- ✅ Admin user added: **parthkotecha2005@gmail.com** (Parth Kotecha)
 - ✅ Table schema includes: email, name, role, restaurant_ids, OTP fields, timestamps
 
 ### Backend (Python + Flask)
@@ -66,7 +66,7 @@
    ```bash
    gcloud run services update binge-company-dashboard \
      --region=asia-south1 \
-     --set-env-vars="SMTP_HOST=smtp.gmail.com,SMTP_PORT=587,SMTP_USER=parthtkale@gmail.com,SMTP_PASSWORD=<your-app-password>,FROM_EMAIL=parthtkale@gmail.com"
+     --set-env-vars="SMTP_HOST=smtp.gmail.com,SMTP_PORT=587,SMTP_USER=parthkotecha2005@gmail.com,SMTP_PASSWORD=<your-app-password>,FROM_EMAIL=parthkotecha2005@gmail.com"
    ```
 
 4. **Redeploy:**
@@ -97,7 +97,7 @@
 # Visit the login page
 https://binge-company-dashboard-857840687457.asia-south1.run.app/login
 
-# Enter admin email: parthtkale@gmail.com
+# Enter admin email: parthkotecha2005@gmail.com
 # Click "Send OTP"
 # Check your email for the 6-digit code
 # Enter OTP and login
@@ -131,8 +131,8 @@ https://binge-company-dashboard-857840687457.asia-south1.run.app/admin/users
 ```sql
 -- Admin user exists:
 SELECT * FROM `tavvlo-database-44.foodwars_ops.dashboard_users`
-WHERE email = 'parthtkale@gmail.com';
--- Returns: Parth Kale, role=admin, is_active=true
+WHERE email = 'parthkotecha2005@gmail.com';
+-- Returns: Parth Kotecha, role=admin, is_active=true
 ```
 
 ### Environment Variables (Cloud Run)
