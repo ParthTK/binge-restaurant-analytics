@@ -427,7 +427,7 @@ def delete_user(email):
 @app.route('/api/admin/restaurants', methods=['GET'])
 @admin_required
 def get_all_restaurants():
-    """Get all restaurants for dropdown selection (admin only)"""
+    """Get all Binge restaurants for dropdown selection (admin only)"""
     try:
         query = f"""
         SELECT
@@ -435,6 +435,7 @@ def get_all_restaurants():
             zomato_id,
             restaurant_name
         FROM `{PROJECT_ID}.{BQ_DATASET_OPS}.restaurant_allowlist`
+        WHERE aggregator = 'Binge'
         ORDER BY restaurant_name
         """
 
@@ -805,20 +806,55 @@ def get_ads_summary():
         return jsonify({"total_spend": 0, "total_revenue": 0, "roi_pct": 0})
 
 @app.route('/api/restaurants', methods=['GET'])
+@login_required
 def get_restaurants():
-    """Get list of all restaurants"""
-    query = f"""
-    SELECT
-        swiggy_id,
-        zomato_id,
-        restaurant_name
-    FROM `{PROJECT_ID}.{BQ_DATASET_OPS}.restaurant_allowlist`
-    WHERE restaurant_name IS NOT NULL
-    ORDER BY restaurant_name
-    """
+    """Get list of restaurants (filtered by user's access)"""
+    user = session.get('user', {})
+    user_role = user.get('role', 'user')
+    restaurant_ids = user.get('restaurant_ids', [])
+
+    # Build query based on user role
+    if user_role == 'admin':
+        # Admin sees all Binge restaurants
+        query = f"""
+        SELECT
+            swiggy_id,
+            zomato_id,
+            restaurant_name
+        FROM `{PROJECT_ID}.{BQ_DATASET_OPS}.restaurant_allowlist`
+        WHERE restaurant_name IS NOT NULL
+          AND aggregator = 'Binge'
+        ORDER BY restaurant_name
+        """
+        job_config = None
+    else:
+        # Regular users only see their assigned restaurants
+        if not restaurant_ids:
+            return jsonify({"restaurants": []}), 200
+
+        query = f"""
+        SELECT
+            swiggy_id,
+            zomato_id,
+            restaurant_name
+        FROM `{PROJECT_ID}.{BQ_DATASET_OPS}.restaurant_allowlist`
+        WHERE restaurant_name IS NOT NULL
+          AND aggregator = 'Binge'
+          AND swiggy_id IN UNNEST(@restaurant_ids)
+        ORDER BY restaurant_name
+        """
+        job_config = bigquery.QueryJobConfig(
+            query_parameters=[
+                bigquery.ArrayQueryParameter("restaurant_ids", "INT64", restaurant_ids)
+            ]
+        )
 
     try:
-        results = bq_client.query(query).result()
+        if job_config:
+            results = bq_client.query(query, job_config=job_config).result()
+        else:
+            results = bq_client.query(query).result()
+
         restaurants = []
         for row in results:
             name = row["restaurant_name"] or "Unknown Restaurant"
