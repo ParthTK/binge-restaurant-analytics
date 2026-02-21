@@ -2,17 +2,29 @@
 Tavvlo Company Dashboard
 Standalone application for company-level analytics with T-1 day data
 """
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, session, send_from_directory
 from flask_cors import CORS
 from datetime import datetime, timedelta
+from functools import wraps
 import os
 import json
+import secrets
 
 from google.cloud import bigquery
 from google.oauth2 import service_account
 
+# Import authentication service
+from auth_service import request_otp, verify_otp, get_user_by_email
+
 # Configure Flask to serve React build
 app = Flask(__name__, static_folder='frontend/dist', static_url_path='')
+
+# Secret key for sessions (generate with: python -c "import secrets; print(secrets.token_hex(32))")
+app.secret_key = os.getenv("SECRET_KEY", secrets.token_hex(32))
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SECURE'] = os.getenv("FLASK_ENV") == "production"
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=7)
 
 # Enable CORS for all routes
 CORS(app, resources={
@@ -21,7 +33,8 @@ CORS(app, resources={
             "https://binge-company-dashboard-857840687457.asia-south1.run.app",
             "http://localhost:5173",
             "http://localhost:3000"
-        ]
+        ],
+        "supports_credentials": True
     }
 })
 
@@ -174,12 +187,289 @@ def build_platform_specific_filter(rest_id: int, params_list: list, platform: st
         return ""
 
 # ============================================================================
+# AUTHENTICATION & MIDDLEWARE
+# ============================================================================
+
+def login_required(f):
+    """Decorator to require login for routes"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'user' not in session:
+            return jsonify({"error": "Authentication required"}), 401
+        return f(*args, **kwargs)
+    return decorated_function
+
+def admin_required(f):
+    """Decorator to require admin role"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'user' not in session:
+            return jsonify({"error": "Authentication required"}), 401
+        if session['user'].get('role') != 'admin':
+            return jsonify({"error": "Admin access required"}), 403
+        return f(*args, **kwargs)
+    return decorated_function
+
+# ============================================================================
+# AUTHENTICATION ROUTES
+# ============================================================================
+
+@app.route('/api/auth/send-otp', methods=['POST'])
+def send_otp():
+    """Send OTP to user's email"""
+    data = request.json
+    email = data.get('email', '').strip().lower()
+
+    if not email:
+        return jsonify({"success": False, "message": "Email is required"}), 400
+
+    result = request_otp(email)
+    return jsonify(result), 200 if result['success'] else 400
+
+@app.route('/api/auth/verify-otp', methods=['POST'])
+def verify_otp_route():
+    """Verify OTP and create session"""
+    data = request.json
+    email = data.get('email', '').strip().lower()
+    otp_code = data.get('otp', '').strip()
+
+    if not email or not otp_code:
+        return jsonify({"success": False, "message": "Email and OTP are required"}), 400
+
+    result = verify_otp(email, otp_code)
+
+    if result['success']:
+        # Create session
+        session.permanent = True
+        session['user'] = result['user']
+        return jsonify({"success": True, "message": "Login successful", "user": result['user']}), 200
+    else:
+        return jsonify(result), 400
+
+@app.route('/api/auth/me', methods=['GET'])
+@login_required
+def get_current_user():
+    """Get current logged in user"""
+    return jsonify({"user": session['user']}), 200
+
+@app.route('/api/auth/logout', methods=['POST'])
+def logout():
+    """Logout user and clear session"""
+    session.pop('user', None)
+    return jsonify({"success": True, "message": "Logged out successfully"}), 200
+
+# ============================================================================
+# ADMIN ROUTES - User Management
+# ============================================================================
+
+@app.route('/api/admin/users', methods=['GET'])
+@admin_required
+def get_all_users():
+    """Get all dashboard users (admin only)"""
+    try:
+        query = f"""
+        SELECT
+            email,
+            name,
+            role,
+            restaurant_ids,
+            is_active,
+            created_at,
+            last_login
+        FROM `{PROJECT_ID}.{BQ_DATASET_OPS}.dashboard_users`
+        ORDER BY created_at DESC
+        """
+
+        results = bq_client.query(query).result()
+        users = []
+
+        for row in results:
+            users.append({
+                "email": row.email,
+                "name": row.name,
+                "role": row.role,
+                "restaurant_ids": list(row.restaurant_ids) if row.restaurant_ids else [],
+                "is_active": row.is_active,
+                "created_at": row.created_at.isoformat() if row.created_at else None,
+                "last_login": row.last_login.isoformat() if row.last_login else None
+            })
+
+        return jsonify({"users": users}), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/admin/users', methods=['POST'])
+@admin_required
+def create_user():
+    """Create new dashboard user (admin only)"""
+    try:
+        data = request.json
+        email = data.get('email', '').strip().lower()
+        name = data.get('name', '').strip()
+        role = data.get('role', 'user')
+        restaurant_ids = data.get('restaurant_ids', [])
+
+        if not email or not name:
+            return jsonify({"error": "Email and name are required"}), 400
+
+        # Check if user already exists
+        check_query = f"""
+        SELECT email FROM `{PROJECT_ID}.{BQ_DATASET_OPS}.dashboard_users`
+        WHERE email = @email
+        LIMIT 1
+        """
+
+        check_params = [bigquery.ScalarQueryParameter("email", "STRING", email)]
+        check_job_config = bigquery.QueryJobConfig(query_parameters=check_params)
+
+        existing = list(bq_client.query(check_query, job_config=check_job_config).result())
+
+        if existing:
+            return jsonify({"error": "User with this email already exists"}), 400
+
+        # Insert new user
+        insert_query = f"""
+        INSERT INTO `{PROJECT_ID}.{BQ_DATASET_OPS}.dashboard_users`
+        (email, name, role, restaurant_ids, is_active, created_at)
+        VALUES (@email, @name, @role, @restaurant_ids, true, CURRENT_TIMESTAMP())
+        """
+
+        params = [
+            bigquery.ScalarQueryParameter("email", "STRING", email),
+            bigquery.ScalarQueryParameter("name", "STRING", name),
+            bigquery.ScalarQueryParameter("role", "STRING", role),
+            bigquery.ArrayQueryParameter("restaurant_ids", "INT64", restaurant_ids)
+        ]
+
+        job_config = bigquery.QueryJobConfig(query_parameters=params)
+        bq_client.query(insert_query, job_config=job_config).result()
+
+        return jsonify({"success": True, "message": "User created successfully"}), 201
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/admin/users/<email>', methods=['PUT'])
+@admin_required
+def update_user(email):
+    """Update user details (admin only)"""
+    try:
+        data = request.json
+        name = data.get('name')
+        role = data.get('role')
+        restaurant_ids = data.get('restaurant_ids')
+        is_active = data.get('is_active')
+
+        # Build update query dynamically based on provided fields
+        updates = []
+        params = [bigquery.ScalarQueryParameter("email", "STRING", email.lower())]
+
+        if name is not None:
+            updates.append("name = @name")
+            params.append(bigquery.ScalarQueryParameter("name", "STRING", name))
+
+        if role is not None:
+            updates.append("role = @role")
+            params.append(bigquery.ScalarQueryParameter("role", "STRING", role))
+
+        if restaurant_ids is not None:
+            updates.append("restaurant_ids = @restaurant_ids")
+            params.append(bigquery.ArrayQueryParameter("restaurant_ids", "INT64", restaurant_ids))
+
+        if is_active is not None:
+            updates.append("is_active = @is_active")
+            params.append(bigquery.ScalarQueryParameter("is_active", "BOOL", is_active))
+
+        if not updates:
+            return jsonify({"error": "No fields to update"}), 400
+
+        updates.append("updated_at = CURRENT_TIMESTAMP()")
+
+        update_query = f"""
+        UPDATE `{PROJECT_ID}.{BQ_DATASET_OPS}.dashboard_users`
+        SET {', '.join(updates)}
+        WHERE email = @email
+        """
+
+        job_config = bigquery.QueryJobConfig(query_parameters=params)
+        bq_client.query(update_query, job_config=job_config).result()
+
+        return jsonify({"success": True, "message": "User updated successfully"}), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/admin/users/<email>', methods=['DELETE'])
+@admin_required
+def delete_user(email):
+    """Delete user (admin only)"""
+    try:
+        # Prevent deleting own account
+        if session['user']['email'] == email.lower():
+            return jsonify({"error": "Cannot delete your own account"}), 400
+
+        delete_query = f"""
+        DELETE FROM `{PROJECT_ID}.{BQ_DATASET_OPS}.dashboard_users`
+        WHERE email = @email
+        """
+
+        params = [bigquery.ScalarQueryParameter("email", "STRING", email.lower())]
+        job_config = bigquery.QueryJobConfig(query_parameters=params)
+
+        bq_client.query(delete_query, job_config=job_config).result()
+
+        return jsonify({"success": True, "message": "User deleted successfully"}), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/admin/restaurants', methods=['GET'])
+@admin_required
+def get_all_restaurants():
+    """Get all restaurants for dropdown selection (admin only)"""
+    try:
+        query = f"""
+        SELECT
+            swiggy_id,
+            zomato_id,
+            restaurant_name
+        FROM `{PROJECT_ID}.{BQ_DATASET_OPS}.restaurant_allowlist`
+        ORDER BY restaurant_name
+        """
+
+        results = bq_client.query(query).result()
+        restaurants = []
+
+        for row in results:
+            restaurants.append({
+                "swiggy_id": int(row.swiggy_id) if row.swiggy_id else None,
+                "zomato_id": int(row.zomato_id) if row.zomato_id else None,
+                "restaurant_name": row.restaurant_name
+            })
+
+        return jsonify({"restaurants": restaurants}), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# ============================================================================
 # FRONTEND ROUTES
 # ============================================================================
 
 @app.route('/')
 def index():
     """Serve React app"""
+    return app.send_static_file('index.html')
+
+@app.route('/login')
+def login_page():
+    """Serve login page"""
+    return app.send_static_file('index.html')
+
+@app.route('/admin')
+def admin_page():
+    """Serve admin page"""
     return app.send_static_file('index.html')
 
 @app.route('/<path:path>')
