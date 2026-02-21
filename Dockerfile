@@ -32,6 +32,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY app.py .
+COPY auth_service.py .
 
 # Copy built frontend from stage 1
 COPY --from=frontend-build /frontend/dist ./frontend/dist
