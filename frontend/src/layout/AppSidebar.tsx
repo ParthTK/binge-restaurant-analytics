@@ -124,6 +124,20 @@ const AppSidebar: React.FC = () => {
     {}
   );
   const subMenuRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  // Check if user is admin
+  useEffect(() => {
+    const storedUser = localStorage.getItem("user");
+    if (storedUser) {
+      try {
+        const user = JSON.parse(storedUser);
+        setIsAdmin(user.role === "admin");
+      } catch (e) {
+        console.error("Failed to parse user data:", e);
+      }
+    }
+  }, []);
 
   // const isActive = (path: string) => location.pathname === path;
   const isActive = useCallback(
@@ -358,6 +372,48 @@ const AppSidebar: React.FC = () => {
               </h2>
               {renderMenuItems(navItems, "main")}
             </div>
+            {isAdmin && (
+              <div className="">
+                <h2
+                  className={`mb-4 text-xs uppercase flex leading-[20px] text-white ${
+                    !isExpanded && !isHovered
+                      ? "lg:justify-center"
+                      : "justify-start"
+                  }`}
+                >
+                  {isExpanded || isHovered || isMobileOpen ? (
+                    "Admin"
+                  ) : (
+                    <HorizontaLDots />
+                  )}
+                </h2>
+                <ul className="flex flex-col gap-4">
+                  <li>
+                    <Link
+                      to="/admin/users"
+                      className={`menu-item group ${
+                        isActive("/admin/users")
+                          ? "menu-item-active"
+                          : "menu-item-inactive"
+                      }`}
+                    >
+                      <span
+                        className={`menu-item-icon-size ${
+                          isActive("/admin/users")
+                            ? "menu-item-icon-active"
+                            : "menu-item-icon-inactive"
+                        }`}
+                      >
+                        <UserCircleIcon />
+                      </span>
+                      {(isExpanded || isHovered || isMobileOpen) && (
+                        <span className="menu-item-text">User Management</span>
+                      )}
+                    </Link>
+                  </li>
+                </ul>
+              </div>
+            )}
             <div className="">
               <h2
                 className={`mb-4 text-xs uppercase flex leading-[20px] text-white ${

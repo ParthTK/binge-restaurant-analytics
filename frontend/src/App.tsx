@@ -4,6 +4,11 @@ import AppLayout from "./layout/AppLayout";
 import { ScrollToTop } from "./components/common/ScrollToTop";
 import Tavvlo from "./pages/Dashboard/Tavvlo";
 
+// Authentication Pages
+import Login from "./pages/AuthPages/Login";
+import UserManagement from "./pages/Admin/UserManagement";
+import ProtectedRoute from "./components/auth/ProtectedRoute";
+
 // Sales Analysis Pages
 import WeekdayWeekend from "./pages/Sales/WeekdayWeekend";
 import Weekly from "./pages/Sales/Weekly";
@@ -54,52 +59,60 @@ export default function App() {
       <Router>
         <ScrollToTop />
         <Routes>
-          {/* Dashboard Layout */}
-          <Route path="/" element={<AppLayout />}>
-            <Route index element={<Tavvlo />} />
+          {/* Login Page (No Layout) */}
+          <Route path="/login" element={<Login />} />
 
-            {/* Platform Comparison */}
-            <Route path="/platform-comparison" element={<PlatformComparison />} />
+          {/* Dashboard Layout (Protected) */}
+          <Route element={<ProtectedRoute />}>
+            <Route path="/" element={<AppLayout />}>
+              <Route index element={<Tavvlo />} />
 
-            {/* Sales Analysis */}
-            <Route path="/sales/trends" element={<SalesTrends />} />
-            <Route path="/sales/orders" element={<OrdersAnalysis />} />
-            <Route path="/sales/aov" element={<AOVAnalysis />} />
-            <Route path="/sales/weekday-weekend" element={<WeekdayWeekend />} />
-            <Route path="/sales/weekly" element={<Weekly />} />
+              {/* Admin Panel */}
+              <Route path="/admin/users" element={<UserManagement />} />
 
-            {/* Customer Funnel */}
-            <Route path="/funnel/organic" element={<OrganicFunnel />} />
-            <Route path="/funnel/conversion" element={<ConversionRates />} />
+              {/* Platform Comparison */}
+              <Route path="/platform-comparison" element={<PlatformComparison />} />
 
-            {/* Ads Performance */}
-            <Route path="/ads/overview" element={<AdsOverview />} />
-            <Route path="/ads/platforms" element={<AdsPlatforms />} />
-            <Route path="/ads/timeslots" element={<AdsTimeslots />} />
+              {/* Sales Analysis */}
+              <Route path="/sales/trends" element={<SalesTrends />} />
+              <Route path="/sales/orders" element={<OrdersAnalysis />} />
+              <Route path="/sales/aov" element={<AOVAnalysis />} />
+              <Route path="/sales/weekday-weekend" element={<WeekdayWeekend />} />
+              <Route path="/sales/weekly" element={<Weekly />} />
 
-            {/* Discounts & Offers */}
-            <Route path="/discounts/analysis" element={<DiscountAnalysis />} />
-            <Route path="/discounts/coupons" element={<CouponPerformance />} />
-            <Route path="/discounts/effective" element={<EffectiveDiscount />} />
+              {/* Customer Funnel */}
+              <Route path="/funnel/organic" element={<OrganicFunnel />} />
+              <Route path="/funnel/conversion" element={<ConversionRates />} />
 
-            {/* Customer Segmentation */}
-            <Route path="/customers/types" element={<UserTypes />} />
-            <Route path="/customers/dayparts" element={<DayPartAnalysis />} />
+              {/* Ads Performance */}
+              <Route path="/ads/overview" element={<AdsOverview />} />
+              <Route path="/ads/platforms" element={<AdsPlatforms />} />
+              <Route path="/ads/timeslots" element={<AdsTimeslots />} />
 
-            {/* Operations */}
-            <Route path="/operations/quality" element={<QualityMetrics />} />
-            <Route path="/operations/kpt-for" element={<KPTandFOR />} />
-            <Route path="/operations/complaints" element={<Complaints />} />
-            <Route path="/operations/online" element={<OnlineStatus />} />
+              {/* Discounts & Offers */}
+              <Route path="/discounts/analysis" element={<DiscountAnalysis />} />
+              <Route path="/discounts/coupons" element={<CouponPerformance />} />
+              <Route path="/discounts/effective" element={<EffectiveDiscount />} />
 
-            {/* Item Analysis */}
-            <Route path="/items/top" element={<TopItems />} />
-            <Route path="/items/per-order" element={<ItemsPerOrder />} />
+              {/* Customer Segmentation */}
+              <Route path="/customers/types" element={<UserTypes />} />
+              <Route path="/customers/dayparts" element={<DayPartAnalysis />} />
 
-            {/* Financials */}
-            <Route path="/financials/commission" element={<CommissionAnalysis />} />
-            <Route path="/financials/payout" element={<PayoutBreakdown />} />
-            <Route path="/financials/revenue" element={<NetRevenue />} />
+              {/* Operations */}
+              <Route path="/operations/quality" element={<QualityMetrics />} />
+              <Route path="/operations/kpt-for" element={<KPTandFOR />} />
+              <Route path="/operations/complaints" element={<Complaints />} />
+              <Route path="/operations/online" element={<OnlineStatus />} />
+
+              {/* Item Analysis */}
+              <Route path="/items/top" element={<TopItems />} />
+              <Route path="/items/per-order" element={<ItemsPerOrder />} />
+
+              {/* Financials */}
+              <Route path="/financials/commission" element={<CommissionAnalysis />} />
+              <Route path="/financials/payout" element={<PayoutBreakdown />} />
+              <Route path="/financials/revenue" element={<NetRevenue />} />
+            </Route>
           </Route>
 
           {/* Fallback Route */}
