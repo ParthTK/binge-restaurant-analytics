@@ -171,7 +171,8 @@ def request_otp(email: str) -> Dict[str, Any]:
             }
 
         # Check rate limiting
-        if user.otp_attempts >= MAX_OTP_ATTEMPTS:
+        otp_attempts = user.otp_attempts if user.otp_attempts is not None else 0
+        if otp_attempts >= MAX_OTP_ATTEMPTS:
             return {
                 "success": False,
                 "message": "Too many failed attempts. Please contact admin."
